@@ -3,50 +3,17 @@
 """
 早稲田大学「人を対象とする研究に関する倫理審査申請書」(様式1〜4一体型 Ver2.1)
 記載内容の事前チェックスクリプト
-
-- 大学公式の「よくある記載不備事例集」に載っている、項目間の整合性ルールを
-  コード化してチェックします。
-- Excel内蔵の「管理用」シート(空欄チェック)を補完するものであり、それに
-  代わるものではありません。両方使ってください。
-- このスクリプトは、あなたのパソコンの中だけで完結します(ファイルの中身が
-  外部のサーバーやAIサービスに送信されることは一切ありません)。
-
-【前提】
-公式テンプレート「人を対象とする研究に関する倫理審査申請書_Ver2.1.xlsx」の
-行・列構成がそのまま(行の挿入・削除をしていない)であることを前提にしています。
-テンプレートのバージョンが変わった場合や、行を挿入・削除した場合は、
-CELLS辞書内のセル番地を実際のファイルに合わせて修正してください。
-
-【使い方】
-    python3 ethics_form_checker.py 対象ファイル.xlsx
-
-    テンプレートのバージョンが想定と違う場合は、内容チェックの前に警告を出して
-    停止します(セル位置がずれている可能性があり、結果が信用できないため)。
-    バージョン確認をスキップして無理やり実行したい場合は、以下のように
-    --force を付けてください(セル番地が実際とずれていても構わない場合のみ)。
-        python3 ethics_form_checker.py 対象ファイル.xlsx --force
-
-【出力】
-【問題あり】【要確認】【問題なし】の3種類に分けてターミナルに一覧表示します。
 """
 
 import sys
 import openpyxl
 
-# このスクリプトが動作確認済みのテンプレートバージョン。
-# 大学側でテンプレートが改訂され、様式のバージョン表記が変わった場合は、
-# セル位置がずれていないか手動で確認したうえで、この値を更新してください。
 EXPECTED_VERSION = "Ver.2.1"
 EXPECTED_SHEETS = ["様式１", "様式２", "様式３", "様式４"]
-VERSION_CELL = "V2"  # 各様式シートの右上にあるバージョン表記セル
+VERSION_CELL = "V2"
 
 
 def check_template_version(wb):
-    """
-    様式1〜4シートの右上にあるバージョン表記(例:'Ver.2.1')を確認し、
-    このスクリプトが動作確認済みのバージョンと一致するかどうかを調べる。
-    戻り値: (問題ないか:bool, メッセージ:str)
-    """
     missing_sheets = [s for s in EXPECTED_SHEETS if s not in wb.sheetnames]
     if missing_sheets:
         return False, (
@@ -79,18 +46,15 @@ def check_template_version(wb):
 
 
 def cell(ws, coord):
-    """セル番地(例:'B733')の値を返す。値が無ければ空文字を返す。"""
     v = ws[coord].value
     return v if v is not None else ""
 
 
 def is_checked(v):
-    """チェックボックスのセルが■(チェック済み)かどうかを判定する。"""
     return isinstance(v, str) and v.strip() == "■"
 
 
 def has_text(v):
-    """セルに実質的な文字列が入っているかどうかを判定する。"""
     return isinstance(v, str) and v.strip() not in ("", "□", "■")
 
 
@@ -104,10 +68,7 @@ def run_checks(wb):
     def add(level, title, detail):
         results[level].append((title, detail))
 
-    # ------------------------------------------------------------------
-    # 様式1: 所属・資格の書き方(不備事例集より)
-    # ------------------------------------------------------------------
-    pi_affil = cell(ws1, "Q11")  # 研究責任者の所属
+    pi_affil = cell(ws1, "Q11")
     if any(x in pi_affil for x in ("学部", "研究室", "研究科")):
         add("要確認", "様式1 所属欄(研究責任者)",
             f"教員の所属欄には学術院名のみを記載する決まりです。現在の値:「{pi_affil}」。"
@@ -115,7 +76,7 @@ def run_checks(wb):
     else:
         add("問題なし", "様式1 所属欄(研究責任者)", f"「{pi_affil}」")
 
-    rep_affil = cell(ws1, "Q21")  # 実施代表者(学生)の所属
+    rep_affil = cell(ws1, "Q21")
     if any(x in rep_affil for x in ("専攻", "研究室")):
         add("要確認", "様式1 所属欄(研究実施代表者)",
             f"大学院生の所属欄には研究科名のみを記載する決まりです。現在の値:「{rep_affil}」。"
@@ -123,18 +84,15 @@ def run_checks(wb):
     else:
         add("問題なし", "様式1 所属欄(研究実施代表者)", f"「{rep_affil}」")
 
-    rep_qual = cell(ws1, "R24")  # 実施代表者の資格
+    rep_qual = cell(ws1, "R24")
     if ("課程" in rep_qual) and any(x in rep_qual for x in ("年", "回生")):
         add("問題なし", "様式1 資格欄(研究実施代表者)", f"「{rep_qual}」")
     else:
         add("要確認", "様式1 資格欄(研究実施代表者)",
             f"大学院生の場合、博士・修士課程の区分と学年の両方が必要です。現在の値:「{rep_qual}」。")
 
-    # ------------------------------------------------------------------
-    # 様式2 項目10: 研究終了日は開始日から5年以内か
-    # ------------------------------------------------------------------
-    start_asap = is_checked(cell(ws2, "D300"))     # ①承認され次第
-    start_fixed = is_checked(cell(ws2, "D301"))    # ②具体的な日付
+    start_asap = is_checked(cell(ws2, "D300"))
+    start_fixed = is_checked(cell(ws2, "D301"))
     end_year = cell(ws2, "I303")
     end_month = cell(ws2, "L303")
     if start_fixed:
@@ -148,13 +106,9 @@ def run_checks(wb):
     else:
         add("要確認", "様式2 項目10(研究実施期間)", "開始・終了日の記載状況を確認できませんでした。")
 
-    # ------------------------------------------------------------------
-    # 様式2 項目12: 公開データベース登録の要否
-    #   A区分①(生命科学・医学系)かつB区分①(介入を行う)の両方に該当する場合のみ登録必須
-    # ------------------------------------------------------------------
-    a1 = is_checked(cell(ws2, "C265"))  # A①生命科学・医学系研究である
-    b1 = is_checked(cell(ws2, "C268"))  # B①介入を行う研究である
-    db_register = is_checked(cell(ws2, "B330"))  # 登録する
+    a1 = is_checked(cell(ws2, "C265"))
+    b1 = is_checked(cell(ws2, "C268"))
+    db_register = is_checked(cell(ws2, "B330"))
     if a1 and b1 and not db_register:
         add("問題あり", "様式2 項目12(公開データベース登録)",
             "研究の区分がA①かつB①(生命科学・医学系研究かつ介入あり)のため、"
@@ -163,14 +117,11 @@ def run_checks(wb):
         add("問題なし", "様式2 項目12(公開データベース登録)",
             "登録必須の条件(A①かつB①)には該当しないか、条件に対して記載が一致しています。")
 
-    # ------------------------------------------------------------------
-    # 様式2 項目14/15: 企業等との関わり・経済的利益関係の整合性
-    # ------------------------------------------------------------------
-    no_company = is_checked(cell(ws2, "B352"))  # ①企業等との関わりはない
-    econ_none = is_checked(cell(ws2, "A366"))   # 項目15 ①ない
-    econ_none_reason = has_text(cell(ws2, "B368"))  # ①ないと判断した理由(入力欄)
-    econ_yes = is_checked(cell(ws2, "A372"))    # 項目15 ②ある
-    econ_yes_detail = has_text(cell(ws2, "B374"))   # ②あるの詳細(入力欄)
+    no_company = is_checked(cell(ws2, "B352"))
+    econ_none = is_checked(cell(ws2, "A366"))
+    econ_none_reason = has_text(cell(ws2, "B368"))
+    econ_yes = is_checked(cell(ws2, "A372"))
+    econ_yes_detail = has_text(cell(ws2, "B374"))
     if no_company and (econ_none or econ_yes or econ_none_reason or econ_yes_detail):
         add("問題あり", "様式2 項目14/15(企業等との関わり)",
             "項目14で「①企業等との関わりはない」を選択した場合、項目15への回答は不要ですが、"
@@ -182,11 +133,8 @@ def run_checks(wb):
     else:
         add("問題なし", "様式2 項目14/15(企業等との関わり)", "整合しています。")
 
-    # ------------------------------------------------------------------
-    # 様式2 項目19/33: 録画・録音がある場合、個人情報欄に記載が必要
-    # ------------------------------------------------------------------
-    recording = is_checked(cell(ws2, "B492"))  # 項目19 ②あり
-    other_info_checked = is_checked(cell(ws2, "B745"))  # 項目33 ⑤その他個人を特定し得る情報
+    recording = is_checked(cell(ws2, "B492"))
+    other_info_checked = is_checked(cell(ws2, "B745"))
     other_info_text = cell(ws2, "F746")
     if recording and not (other_info_checked and "録画" in str(other_info_text) or "録音" in str(other_info_text)):
         add("問題あり", "様式2 項目19/33(録画・録音の記録)",
@@ -197,21 +145,33 @@ def run_checks(wb):
         add("問題なし", "様式2 項目19/33(録画・録音の記録)",
             "録画・録音「あり」を選択していないか、選択している場合は項目33に対応する記載があります。")
 
-    # ------------------------------------------------------------------
-    # 様式2 項目20: 保管期間が研究終了後5年以上か
-    # ------------------------------------------------------------------
     keep_years = cell(ws2, "F504")
+    keep_months = cell(ws2, "I504")
+
+    def format_retention_until(end_year, end_month, keep_years, keep_months):
+        """研究終了予定年月 + 保管年数・月数 から、保管期限の絶対年月(文字列)を計算する。
+        終了予定が具体的な年月で入力されていない場合はNoneを返す。"""
+        if not (isinstance(end_year, int) and isinstance(end_month, int)):
+            return None
+        y = keep_years if isinstance(keep_years, (int, float)) else 0
+        m = keep_months if isinstance(keep_months, (int, float)) else 0
+        total = end_year * 12 + (end_month - 1) + int(y) * 12 + int(m)
+        return f"{total // 12}年{total % 12 + 1}月"
+
     if isinstance(keep_years, (int, float)) and keep_years < 5:
         add("要確認", "様式2 項目20(データの保管期間)",
             f"研究終了後の保管年数が{keep_years}年になっています。5年以上を推奨事項としています。")
     else:
-        add("問題なし", "様式2 項目20(データの保管期間)", f"研究終了後{keep_years}年保管(5年以上)。")
+        until_text = format_retention_until(end_year, end_month, keep_years, keep_months)
+        detail = f"研究終了後{keep_years}年保管(5年以上)。"
+        if until_text:
+            detail += (f" 研究終了予定({end_year}年{end_month}月)から数えると、"
+                       f"{until_text}までに相当します。委員会から、この絶対年月での"
+                       f"明記も追加で求められることがあります。")
+        add("問題なし", "様式2 項目20(データの保管期間)", detail)
 
-    # ------------------------------------------------------------------
-    # 様式2 項目25/26: 募集要領の添付有無と、項目26①のチェックの整合性
-    # ------------------------------------------------------------------
-    youryou_none = is_checked(cell(ws2, "L601"))  # 募集要領の添付「②なし」
-    item26_1 = is_checked(cell(ws2, "B612"))      # 「募集要領に明記している」
+    youryou_none = is_checked(cell(ws2, "L601"))
+    item26_1 = is_checked(cell(ws2, "B612"))
     if youryou_none and item26_1:
         add("問題あり", "様式2 項目25/26(募集要領)",
             "募集要領を添付していないにもかかわらず、項目26①「募集要領に明記している」に"
@@ -220,27 +180,23 @@ def run_checks(wb):
     else:
         add("問題なし", "様式2 項目25/26(募集要領)", "整合しています。")
 
-    # ------------------------------------------------------------------
-    # 様式2 項目29/33: 文書によるインフォームド・コンセント + 様式4添付
-    #                  → 個人情報として「①氏名」のチェックが必要
-    # ------------------------------------------------------------------
-    written_consent = is_checked(cell(ws2, "B643"))  # 対象者から文書によるICを得る
-    form4_attached = is_checked(cell(ws1, "A51"))    # 様式1 添付資料④参加への同意書
-    name_checked = is_checked(cell(ws2, "B733"))     # 項目33 ①氏名
+    written_consent = is_checked(cell(ws2, "B643"))
+    form4_attached = is_checked(cell(ws1, "A51"))
+    name_checked = is_checked(cell(ws2, "B733"))
     if written_consent and form4_attached and not name_checked:
-        add("問題あり", "様式2 項目33(収集する個人情報 - 氏名)",
+        add("要確認", "様式2 項目33(収集する個人情報 - 氏名)",
             "様式4(参加への同意書)を添付し、文書によるインフォームド・コンセントを"
             "得る設計になっていますが、項目33「収集する個人情報」の「①氏名」にチェックが"
-            "ありません。参加者は同意書に署名するため、①氏名にもチェックと利用目的の"
-            "記載が必要です。")
+            "ありません。参加者は同意書に署名するため、通常は①氏名にもチェックと利用目的の"
+            "記載が必要です。\n"
+            "      ※ただし、氏名を研究データとして保存・利用せず、同意確認のためだけに"
+            "事務的に収集・保管する場合は、項目33セルコメントの例外規定により記載不要です"
+            "(その場合は「問題なし」扱いで構いません)。")
     else:
         add("問題なし", "様式2 項目33(収集する個人情報 - 氏名)", "整合しています。")
 
-    # ------------------------------------------------------------------
-    # 様式2 項目33/34: 「個人情報を収集しない」と「匿名化する」は両立しない
-    # ------------------------------------------------------------------
-    no_personal_info = is_checked(cell(ws2, "B752"))  # 項目33 ⑥個人情報を収集しない
-    anonymize = is_checked(cell(ws2, "B755"))         # 項目34 ①匿名化する
+    no_personal_info = is_checked(cell(ws2, "B752"))
+    anonymize = is_checked(cell(ws2, "B755"))
     if no_personal_info and anonymize:
         add("問題あり", "様式2 項目33/34(個人情報を収集しない×匿名化)",
             "項目33で「⑥個人情報を収集しない」を選択しているにもかかわらず、項目34で"
@@ -249,13 +205,7 @@ def run_checks(wb):
     else:
         add("問題なし", "様式2 項目33/34(個人情報を収集しない×匿名化)", "整合しています。")
 
-    # ------------------------------------------------------------------
-    # 様式3 項目7: 問い合わせ先に研究責任者の連絡先が含まれているか
-    # ------------------------------------------------------------------
-    pi_extension = cell(ws1, "R12")            # 様式1 研究責任者の内線
-    # 問い合わせ先ブロック(様式3の該当行付近)を広めに走査し、
-    # 研究責任者の内線番号がどこかのセルに書かれていないかを探す。
-    # (テンプレートの改版でセル位置がずれても拾えるよう、範囲でチェックする)
+    pi_extension = cell(ws1, "R12")
     contact_value = ""
     for r in range(221, 232):
         for c in range(1, 20):
@@ -283,9 +233,6 @@ def print_report(results, path):
             print(f"  - {title}")
             print(f"      {detail}")
     print("\n" + "=" * 70)
-    print("※このチェックは記載不備事例集に基づく主要ルールのみを対象にしています。")
-    print("※Excel内蔵の「管理用」シートの自動判定(空欄チェック)とあわせて確認してください。")
-    print("※このスクリプトはファイルの中身を一切外部に送信しません(ローカル実行のみ)。")
 
 
 def main():
@@ -307,7 +254,6 @@ def main():
     if not version_ok:
         if force:
             print("\n※--force が指定されているため、警告のまま内容チェックを続行します。")
-            print("　結果が実際とずれている可能性があるので、特に慎重に確認してください。\n")
         else:
             print("\n内容チェックは行わずに終了します。上記の点をご確認ください。")
             sys.exit(1)
