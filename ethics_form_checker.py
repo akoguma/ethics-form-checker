@@ -165,10 +165,17 @@ def run_checks(wb):
         until_text = format_retention_until(end_year, end_month, keep_years, keep_months)
         detail = f"研究終了後{keep_years}年保管(5年以上)。"
         if until_text:
-            detail += (f" 研究終了予定({end_year}年{end_month}月)から数えると、"
-                       f"{until_text}までに相当します。委員会から、この絶対年月での"
-                       f"明記も追加で求められることがあります。")
-        add("問題なし", "様式2 項目20(データの保管期間)", detail)
+            # 2026年10月提出分の実際の審査で、5年以上を満たしていても委員会から
+            # 絶対年月での明記を求められた実例があるため、「問題なし」で流さず
+            # 「要確認」として、様式2に直接書き込むことを促す。
+            add("要確認", "様式2 項目20(データの保管期間)",
+                detail + (f" 研究終了予定({end_year}年{end_month}月)から数えると、"
+                          f"{until_text}までに相当します。5年以上の基準は満たしていますが、"
+                          f"実際の審査では、基準を満たしていても委員会から絶対年月での"
+                          f"明記を求められるケースがあるため、様式2の保管期間欄に"
+                          f"「({until_text}まで)」のように直接書き加えておくことを推奨します。"))
+        else:
+            add("問題なし", "様式2 項目20(データの保管期間)", detail)
 
     youryou_none = is_checked(cell(ws2, "L601"))
     item26_1 = is_checked(cell(ws2, "B612"))
