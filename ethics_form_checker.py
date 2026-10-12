@@ -5,6 +5,7 @@
 記載内容の事前チェックスクリプト
 """
 
+import re
 import sys
 import openpyxl
 
@@ -147,6 +148,7 @@ def run_checks(wb):
 
     keep_years = cell(ws2, "F504")
     keep_months = cell(ws2, "I504")
+    retention_note = cell(ws2, "L504")
 
     def format_retention_until(end_year, end_month, keep_years, keep_months):
         """研究終了予定年月 + 保管年数・月数 から、保管期限の絶対年月(文字列)を計算する。
@@ -158,24 +160,57 @@ def run_checks(wb):
         total = end_year * 12 + (end_month - 1) + int(y) * 12 + int(m)
         return f"{total // 12}年{total % 12 + 1}月"
 
+    def parse_absolute_note(text):
+        """保管期間欄(L504)の注記文字列から、絶対年月(年, 月)を抜き出す。
+        「○○○○年○月」のパターンが見つからなければNoneを返す。"""
+        m = re.search(r"(\d{3,4})年(\d{1,2})月", str(text))
+        if not m:
+            return None
+        return int(m.group(1)), int(m.group(2))
+
+    noted = parse_absolute_note(retention_note)
+    has_absolute_note = noted is not None
+
+    # 記載されている絶対年月が、「研究終了予定 + 5年」の最低ラインを実際に満たしているかどうか。
+    # end_year/end_monthが具体的な年月で入力されていない場合は判定できないためNone(要確認扱い)。
+    meets_minimum = None
+    if noted and isinstance(end_year, int) and isinstance(end_month, int):
+        noted_total = noted[0] * 12 + (noted[1] - 1)
+        required_total = end_year * 12 + (end_month - 1) + 5 * 12
+        meets_minimum = noted_total >= required_total
+
     if isinstance(keep_years, (int, float)) and keep_years < 5:
         add("要確認", "様式2 項目20(データの保管期間)",
             f"研究終了後の保管年数が{keep_years}年になっています。5年以上を推奨事項としています。")
-    else:
+    elif not has_absolute_note:
+        # 「研究終了後○年○月まで保管する」という相対表記自体は(年金の被保険者期間表記などと同様)
+        # 日本語として誤りではないが、委員会からの指摘は「絶対年月を記載すること」そのものなので、
+        # 相対表記のみでは指摘事項を解消したことにならない。そのため「要確認」では流さず
+        # 「問題あり」として扱う。
         until_text = format_retention_until(end_year, end_month, keep_years, keep_months)
-        detail = f"研究終了後{keep_years}年保管(5年以上)。"
+        detail = (f"保管期間欄が「研究終了後{keep_years}年{keep_months}月まで保管する」という"
+                   "相対表記のみで記載されており、絶対年月の記載がありません。")
         if until_text:
-            # 2026年10月提出分の実際の審査で、5年以上を満たしていても委員会から
-            # 絶対年月での明記を求められた実例があるため、「問題なし」で流さず
-            # 「要確認」として、様式2に直接書き込むことを促す。
-            add("要確認", "様式2 項目20(データの保管期間)",
-                detail + (f" 研究終了予定({end_year}年{end_month}月)から数えると、"
-                          f"{until_text}までに相当します。5年以上の基準は満たしていますが、"
-                          f"実際の審査では、基準を満たしていても委員会から絶対年月での"
-                          f"明記を求められるケースがあるため、様式2の保管期間欄に"
-                          f"「({until_text}まで)」のように直接書き加えておくことを推奨します。"))
-        else:
-            add("問題なし", "様式2 項目20(データの保管期間)", detail)
+            detail += f" 研究終了予定({end_year}年{end_month}月)から数えると、{until_text}までに相当します。"
+        add("問題あり", "様式2 項目20(データの保管期間)",
+            detail + "委員会の指摘事項は絶対年月の記載を求めているため、相対表記だけでは"
+                     "解消されません。様式2の保管期間欄に絶対年月(例:「(○○○○年○月まで)」)を"
+                     "赤字・下線で追記してください。")
+    elif meets_minimum is False:
+        add("問題あり", "様式2 項目20(データの保管期間)",
+            f"保管期間欄に絶対年月(「{retention_note}」)が記載されていますが、研究終了予定"
+            f"({end_year}年{end_month}月)から5年以上先になっていない可能性があります。"
+            "記載内容を確認し、研究終了後5年以上先の年月に修正してください。")
+    elif meets_minimum is True:
+        add("問題なし", "様式2 項目20(データの保管期間)",
+            f"保管期間欄に絶対年月(「{retention_note}」)が記載されており、研究終了予定"
+            f"({end_year}年{end_month}月)から5年以上先になっていることを確認しました。")
+    else:
+        # has_absolute_note=True だが、研究終了予定年月が具体的でないなどの理由でmeets_minimumを
+        # 計算できなかった場合。絶対年月の記載自体はあるため、5年以上かどうかは目視で確認する。
+        add("要確認", "様式2 項目20(データの保管期間)",
+            f"保管期間欄に絶対年月(「{retention_note}」)が記載されています。研究終了予定年月が"
+            "具体的に読み取れなかったため、5年以上先になっているかは目視で確認してください。")
 
     youryou_none = is_checked(cell(ws2, "L601"))
     item26_1 = is_checked(cell(ws2, "B612"))
